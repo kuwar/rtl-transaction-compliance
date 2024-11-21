@@ -1,0 +1,5 @@
+.idea
+.env
+python/venv
+python/datagen/__pycache__/
+python/__pycache__/

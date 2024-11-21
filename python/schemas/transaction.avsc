@@ -1,0 +1,44 @@
+{
+    "namespace": "financials.transaction",
+    "name": "Transaction",
+    "type": "record",
+    "fields": [
+        {
+            "name": "transaction_id",
+            "type": "string",
+            "doc": "Unique identifier for the transaction."
+        },
+        {
+            "name": "user_id",
+            "type": "string",
+            "doc": "Unique identifier for the user."
+        },
+        {
+            "name": "amount",
+            "type": "double",
+            "doc": "Transaction amount in monetary terms."
+        },
+        {
+            "name": "timestamp",
+            "type": "string",
+            "doc": "ISO 8601 formatted timestamp of the transaction."
+        },
+        {
+            "name": "geo_location",
+            "type": {
+                "name": "Geolocation",
+                "type": "record",
+                "fields": [
+                    { "name": "lat", "type": "string", "doc": "Latitude of the location." },
+                    { "name": "lon", "type": "string", "doc": "Longitude of the location." }
+                ]
+            },
+            "doc": "Geographical location details."
+        },
+        {
+            "name": "ip_address",
+            "type": "string",
+            "doc": "IP address of the user at the time of transaction."
+        }
+    ]
+}
