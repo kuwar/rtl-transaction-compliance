@@ -1,9 +1,12 @@
 black==24.10.0
+certifi==2024.8.30
+charset-normalizer==3.4.0
 click==8.1.7
 confluent-kafka==2.6.1
 Faker==33.0.0
 fastavro==1.9.7
 flake8==7.1.1
+idna==3.10
 mccabe==0.7.0
 mypy-extensions==1.0.0
 packaging==24.2
@@ -12,6 +15,8 @@ platformdirs==4.3.6
 pycodestyle==2.12.1
 pyflakes==3.2.0
 python-dateutil==2.9.0.post0
+requests==2.32.3
 six==1.16.0
 tomli==2.1.0
 typing_extensions==4.12.2
+urllib3==2.2.3

@@ -57,4 +57,4 @@ def produce_transaction(
 
 
 if __name__ == "__main__":
-    produce_transaction(no_of_transaction=10)
+    produce_transaction(no_of_transaction=1)
