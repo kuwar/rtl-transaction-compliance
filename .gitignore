@@ -3,3 +3,5 @@
 python/venv
 python/datagen/__pycache__/
 python/__pycache__/
+spark/src/pyspark/__pycache__/
+spark/src/pyspark/examples/
