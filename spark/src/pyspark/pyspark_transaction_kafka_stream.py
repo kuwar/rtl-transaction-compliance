@@ -7,11 +7,11 @@ from config import sr_config, kafka_config
 
 # Initialize Spark session
 spark = SparkSession.builder \
-    .appName("PySparkStreamingKafkaAvroIntegration") \
+    .appName("PySparkStreamingKafkaAvroIntegrationWithElasticsearch") \
     .config("spark.jars.packages",
             "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.6,"
             "org.apache.spark:spark-avro_2.12:3.5.6,"
-            "io.confluent:kafka-avro-serializer:7.3.3") \
+            "io.confluent:kafka-avro-serializer:7.5.0") \
     .getOrCreate()
 
 # Set log to Warn
@@ -25,9 +25,11 @@ topic = "transactions"
 schema_registry_client = SchemaRegistryClient(sr_config)
 
 # Fetch schema by subject
-# subject_name = f"{topic}-value"
-# schema = schema_registry_client.get_latest_version(subject_name).schema
-# avro_schema = schema.schema_str
+subject_name = f"{topic}-value"
+schema = schema_registry_client.get_latest_version(subject_name).schema
+avro_schema = schema.schema_str
+print("Avro schema in confluent schema registry")
+print(avro_schema)
 avro_options = {
     "schema.registry.url": "http://192.168.1.17:8081/",
     "mode": "PERMISSIVE"
@@ -39,9 +41,10 @@ init_df = spark.readStream \
     .option("kafka.bootstrap.servers", "192.168.1.17:9092,192.168.1.17:9093,192.168.1.17:9094") \
     .option("subscribe", topic) \
     .option("startingOffsets", "earliest") \
+    .option("failOnDataLoss", "false") \
     .load()
-
-avro_schema = """
+"""
+avro_schema = 
 {
     "namespace": "financials.transaction",
     "name": "Transaction",
@@ -81,9 +84,10 @@ deserialized_df = cleaned_data.select(
 
 query = deserialized_df \
     .writeStream \
+    .queryName("transaction_writing_to_es") \
+    .outputMode("update") \
     .format("console") \
-    .outputMode("append") \
-    .option("truncate", "false") \
+    .option("checkpointLocation", "./es_log_checkpoint") \
     .start()
 
 query.awaitTermination()

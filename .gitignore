@@ -5,3 +5,8 @@ python/datagen/__pycache__/
 python/__pycache__/
 spark/src/pyspark/__pycache__/
 spark/src/pyspark/examples/
+.DS_Store
+spark/Dockerfile
+spark/src/.DS_Store
+spark/src/pyspark/.DS_Store
+
