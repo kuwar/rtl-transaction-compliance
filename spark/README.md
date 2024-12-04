@@ -34,7 +34,11 @@ spark-submit \
 
 
 spark-submit \
-    --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-avro_2.12:3.5.0,org.elasticsearch:elasticsearch-spark-30_2.12:8.16.1 \
+    --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.spark:spark-avro_2.12:3.5.3,io.confluent:kafka-avro-serializer:7.5.0,org.elasticsearch:elasticsearch-spark-30_2.12:8.16.1 \
+    ./pyspark_transaction_kafka_stream.py
+
+spark-submit \
+    --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.spark:spark-avro_2.12:3.5.3,org.elasticsearch:elasticsearch-spark-30_2.12:8.16.1 \
     ./pyspark_transaction_kafka_stream.py
 
 
