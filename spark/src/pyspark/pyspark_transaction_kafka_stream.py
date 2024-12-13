@@ -1,7 +1,7 @@
 from elasticsearch import Elasticsearch
 from elasticsearch import helpers
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, expr, date_format
+from pyspark.sql.functions import col, expr, date_format, to_json
 from pyspark.sql.avro.functions import from_avro
 from confluent_kafka.schema_registry import SchemaRegistryClient
 
@@ -25,7 +25,7 @@ spark.sparkContext.setLogLevel("ERROR")
 
 # Kafka & Schema Registry configurations
 kafka_broker = kafka_config["bootstrap.servers"]
-topic = "transactions"
+topic = "transactions_avro"
 
 # Set up Schema Registry client
 schema_registry_client = SchemaRegistryClient(sr_config)
@@ -37,44 +37,18 @@ avro_schema = schema.schema_str
 print("Avro schema in confluent schema registry")
 print(avro_schema)
 avro_options = {
-    "schema.registry.url": "http://192.168.1.17:8081/",
+    "schema.registry.url": "http://localhost:8081/",
     "mode": "PERMISSIVE"
 }
 
 # Consume data from Kafka topic
 init_df = spark.readStream \
     .format("kafka") \
-    .option("kafka.bootstrap.servers", "192.168.1.17:9092,192.168.1.17:9093,192.168.1.17:9094") \
+    .option("kafka.bootstrap.servers", "localhost:9092,localhost:9093,localhost:9094") \
     .option("subscribe", topic) \
     .option("startingOffsets", "earliest") \
     .option("failOnDataLoss", "false") \
     .load()
-"""
-avro_schema = 
-{
-    "namespace": "financials.transaction",
-    "name": "Transaction",
-    "type": "record",
-    "fields": [
-        {"name": "transaction_id", "type": "string"},
-        {"name": "user_id", "type": "string"},
-        {"name": "amount", "type": "double"},
-        {"name": "timestamp", "type": "string"},
-        {
-            "name": "geo_location",
-            "type": {
-                "name": "Geolocation",
-                "type": "record",
-                "fields": [
-                    {"name": "lat", "type": "string"},
-                    {"name": "lon", "type": "string"}
-                ]
-            }
-        },
-        {"name": "ip_address", "type": "string"}
-    ]
-}
-"""
 
 # Remove Schema Registry metadata
 """
@@ -94,7 +68,7 @@ transformed_df = deserialized_df.withColumn("timestamp", date_format("timestamp"
 es = Elasticsearch(["http://127.0.0.1:9200"])
 
 
-def send_to_elasticsearch_with_error_handling(batch_df, batch_id):
+def write_to_elasticsearch(batch_df, batch_id):
     try:
         # Convert DataFrame rows to dictionaries with recursive conversion of nested Rows
         dict_list = [row.asDict(recursive=True) for row in batch_df.collect()]
@@ -118,36 +92,53 @@ def send_to_elasticsearch_with_error_handling(batch_df, batch_id):
         print(f"Batch {batch_id} failed: {e}")
 
 
+# send data to file - parquet
+def write_to_parquet(df, batch_id):
+    # write to parquet
+    df.write.format("parquet").mode("append").save("./data/output/transactions")
+
+
+# write data to JDBC - PostgreSQL
+def write_to_postgresql(df, batch_id):
+    df.show()
+    df.printSchema()
+    df_postgresql = df.withColumn("geo_location", to_json(col("geo_location")))
+    df_postgresql.printSchema()
+
+    (
+        df_postgresql
+            .write
+            .mode("append")
+            .format("jdbc")
+            .option("driver", "org.postgresql.Driver")
+            .option("url", "jdbc:postgresql://localhost:5432/postgres")
+            .option("dbtable", "transactions")
+            .option("user", "postgres")
+            .option("password", "postgres")
+            .option("createTableColumnTypes", "geo_location JSON")
+            .save()
+    )
+
+
+# manage different sink
+def write_to_sink(df, batch_id):
+    write_to_parquet(df, batch_id)
+    write_to_elasticsearch(df, batch_id)
+    write_to_postgresql(df, batch_id)
+
+
 # **************************
 
-# Writing to console
-"""
-query = deserialized_df \
-    .writeStream \
-    .outputMode("append") \
-    .format("console") \
-    .start()
-
-"""
-"""
-query = deserialized_df \
-    .writeStream \
-    .queryName("stream_transaction_writing_to_es") \
-    .outputMode("append") \
-    .format("es") \
-    .option("es.nodes", "127.0.0.1") \
-    .option("es.port", "9200") \
-    .option("es.resource", "transactions") \
-    .option("es.nodes.wan.only", "true") \
-    .option("checkpointLocation", "./es_transactions_checkpoint") \
-    .start()
-
-query.awaitTermination()
-"""
-
-# Write stream to Elasticsearch
+# Write stream to different sinks
 transformed_df.writeStream \
-    .foreachBatch(send_to_elasticsearch_with_error_handling) \
+    .foreachBatch(write_to_sink) \
     .outputMode("append") \
     .start() \
     .awaitTermination()
+
+"""
+spark-submit \
+  --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3,org.apache.spark:spark-avro_2.12:3.5.3,org.elasticsearch:elasticsearch-spark-30_2.12:8.16.1 \
+  --jars ./jars/postgresql-42.7.2.jar \
+  ./pyspark_transaction_kafka_stream.py
+"""

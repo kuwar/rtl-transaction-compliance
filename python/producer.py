@@ -36,7 +36,7 @@ def delivery_callback(err, msg):
 
 
 def produce_transaction(
-    no_of_transaction: int = 1, topic: str = "transactions"
+    no_of_transaction: int = 1, topic: str = "transactions_avro"
 ) -> None:
     for i in range(no_of_transaction):
         transaction_data = generate_transaction()
