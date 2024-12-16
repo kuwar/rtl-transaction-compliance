@@ -11,3 +11,14 @@ sr_config = {
     "url": "http://localhost:8081/",
     # 'basic.auth.user.info': '<SR_API_KEY>:<SR_API_SECRET>'
 }
+
+es_config = {
+    "clusters": ["http://127.0.0.1:9200"]
+}
+
+pg_config = {
+    "url": "jdbc:postgresql://localhost:5432/postgres",
+    "dbtable": "<TABLE_NAME>",
+    "user": "postgres",
+    "password": "postgres"
+}
