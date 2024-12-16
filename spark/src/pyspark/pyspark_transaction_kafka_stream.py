@@ -1,9 +1,10 @@
 from elasticsearch import Elasticsearch
 from elasticsearch import helpers
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, expr, date_format, to_json
+from pyspark.sql.functions import col, expr, date_format, to_json, lit
 from pyspark.sql.avro.functions import from_avro
 from confluent_kafka.schema_registry import SchemaRegistryClient
+from functools import reduce
 
 from config import sr_config, kafka_config
 
@@ -56,19 +57,47 @@ Schema Registry Metadata: When using Confluent Schema Registry, Avro messages ar
 Incorrect Kafka Producer Serialization: The producer may not have serialized the messages correctly using the Avro schema.
 Mismatch Between Avro Schema and Serialized Data: The schema used in Spark does not match the schema used by the producer.
 """
-cleaned_data = init_df.withColumn("value", expr("substring(value, 6, length(value)-5)"))
 
-deserialized_df = cleaned_data.select(
-    from_avro(col("value"), avro_schema, {"mode": "PERMISSIVE"}).alias("data")
-).select("data.*")
 
-transformed_df = deserialized_df.withColumn("timestamp", date_format("timestamp", "yyyy-MM-dd HH:mm:ss"))
+def flattened_df(df, batch_id):
+    # Here the stream data is avro serialized
+    # first 5 bits are combination of magic bits and schema id from schema repository
+    # already know schema so ignoring the schema id
+    value_df = (
+        df
+            .withColumn("value", expr("substring(value, 6, length(value)-5)"))
+            .withColumn("key", expr("cast(key as string)"))
+            .withColumn("batch_id", lit(str(batch_id)))
+            .withColumn("timestamp", date_format("timestamp", "yyyy-MM-dd HH:mm:ss"))
+    )
+
+    deserialized_df = value_df.withColumn(
+        "value",
+        from_avro(col("value"), avro_schema, {"mode": "PERMISSIVE"})
+    )
+
+    # destruction the nested fields
+    deflect_df = deserialized_df.selectExpr("*", "value.*").drop("value")
+    transaction_fields = ["transaction_id", "user_id", "amount", "timestamp", "geo_location", "ip_address"]
+
+    # filtering out error data
+    # check if any of transaction fields are missing
+    transaction_conditions = reduce(lambda acc, col_name: acc | col(col_name).isNull(), transaction_fields, lit(True))
+    error_df = deflect_df.where(transaction_conditions)
+    # filtering out correct data
+    valid_df = deflect_df.where(~transaction_conditions)
+    # checking if anomalies lies in the data
+    # if the transaction amt exceed 200 then this transaction is red flag
+    red_flag_df = valid_df.where("amount > 200")
+    return error_df, valid_df, red_flag_df
+
+
 # **************************
 # Initialize Elasticsearch client
 es = Elasticsearch(["http://127.0.0.1:9200"])
 
 
-def write_to_elasticsearch(batch_df, batch_id):
+def write_to_elasticsearch(batch_df, es_index="transactions"):
     try:
         # Convert DataFrame rows to dictionaries with recursive conversion of nested Rows
         dict_list = [row.asDict(recursive=True) for row in batch_df.collect()]
@@ -89,17 +118,17 @@ def write_to_elasticsearch(batch_df, batch_id):
         for error in errors:
             print(error)
     except Exception as e:
-        print(f"Batch {batch_id} failed: {e}")
+        print(f"Batch failed: {e}")
 
 
 # send data to file - parquet
-def write_to_parquet(df, batch_id):
+def write_to_parquet(df):
     # write to parquet
     df.write.format("parquet").mode("append").save("./data/output/transactions")
 
 
 # write data to JDBC - PostgreSQL
-def write_to_postgresql(df, batch_id):
+def write_to_postgresql(df, table="transactions"):
     df.show()
     df.printSchema()
     df_postgresql = df.withColumn("geo_location", to_json(col("geo_location")))
@@ -122,15 +151,23 @@ def write_to_postgresql(df, batch_id):
 
 # manage different sink
 def write_to_sink(df, batch_id):
-    write_to_parquet(df, batch_id)
-    write_to_elasticsearch(df, batch_id)
-    write_to_postgresql(df, batch_id)
+    error_df, valid_df, red_flag_df = flattened_df(df, batch_id)
+    write_to_parquet(valid_df)
+    write_to_elasticsearch(valid_df)
+    write_to_postgresql(valid_df)
+
+    # check if error df exist and write it to error transaction table
+    if error_df.take(1):
+        write_to_postgresql(error_df, table="error_transactions")
+    # check if red flag transaction exist
+    if red_flag_df.take(1):
+        write_to_elasticsearch(red_flag_df, es_index="error_transactions")
 
 
 # **************************
 
 # Write stream to different sinks
-transformed_df.writeStream \
+init_df.writeStream \
     .foreachBatch(write_to_sink) \
     .outputMode("append") \
     .start() \
