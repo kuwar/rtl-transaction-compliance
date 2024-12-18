@@ -143,9 +143,9 @@ def write_to_elasticsearch(batch_df, es_index="transactions"):
 
 
 # send data to file - parquet
-def write_to_parquet(df):
+def write_to_parquet(df, output_path="./data/output/transactions"):
     # write to parquet
-    df.write.format("parquet").mode("append").save("./data/output/transactions")
+    df.write.format("parquet").mode("append").save(output_path)
 
 
 # write data to JDBC - PostgreSQL
@@ -169,20 +169,26 @@ def write_to_postgresql(df, table="transactions"):
 
 # manage different sink
 def write_to_sink(df, batch_id):
-    error_df, valid_df, red_flag_df = flattened_df(df, batch_id)
+    try:
+        error_df, valid_df, red_flag_df = flattened_df(df, batch_id)
 
-    # check if valid data exist
-    if valid_df.take(1):
-        write_to_parquet(valid_df)
-        write_to_elasticsearch(valid_df)
-        write_to_postgresql(valid_df)
-    #
-    # # check if error df exist and write it to error transaction table
-    if error_df.take(1):
-        write_to_postgresql(error_df, table="error_transactions")
-    # # check if red flag transaction exist
-    if red_flag_df.take(1):
-        write_to_elasticsearch(red_flag_df, es_index="error_transactions")
+        # check if valid data exist
+        if valid_df.take(1):
+            write_to_parquet(valid_df)
+            write_to_elasticsearch(valid_df)
+            write_to_postgresql(valid_df)
+        #
+        # # check if error df exist and write it to error transaction table
+        if error_df.take(1):
+            write_to_postgresql(error_df, table="error_transactions")
+        # # check if red flag transaction exist
+        if red_flag_df.take(1):
+            write_to_elasticsearch(red_flag_df, es_index="error_transactions")
+    except Exception as ex:
+        print("Exception \n", ex)
+        # write exception to parquet file
+        exception_df = df.withColumn("batch_id", lit(str(batch_id)))
+        write_to_parquet(exception_df, "./data/output/exception/transactions")
 
 
 # **************************
