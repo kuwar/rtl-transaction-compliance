@@ -150,8 +150,6 @@ def write_to_parquet(df):
 
 # write data to JDBC - PostgreSQL
 def write_to_postgresql(df, table="transactions"):
-    df.show()
-    df.printSchema()
     df_postgresql = df.withColumn("geo_location", to_json(col("geo_location")))
     df_postgresql.printSchema()
 
